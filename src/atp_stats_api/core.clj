@@ -1,6 +1,7 @@
 (ns atp-stats-api.core
   (:require [cheshire.core :refer [parse-string]]
-            [net.cgrand.enlive-html :as html]))
+            [net.cgrand.enlive-html :as html]
+            [clojure.string :as string]))
 
 ;; CONSTANTS
 
@@ -12,6 +13,7 @@
                       :initial-scores               "/-/ajax/scores/getinitialscores/"
                       :tournament-archive           "/-/ajax/Scores/GetTournamentArchiveForYear/"
                       :players                      "/players/"
+                      :scores                       "/scores/archive/"
                       :tournaments                  "/tournaments/"})
 
 ;; HELPER FUNCTIONS
@@ -38,6 +40,17 @@
     stats
     (first stats)))
 
+(defn clean-breaks [s]
+  (string/replace s #"[\t\n]" ""))
+
+(defn single-text-element [page selector nth-fn]
+  (-> page
+      selector
+      nth-fn
+      :content
+      first
+      clean-breaks))
+
 ;; API
 
 ; JSON AJAX routes
@@ -60,7 +73,6 @@
   (ajax-query :tournament-archive q))
 
 ; HTML pages (boo)
-
 (defn match-stats [{:keys [tournament tournament-id year p1 p2] :as params}]
   (let [url (create-atp-url :tournaments tournament "/" tournament-id "/" year "/match-stats/" p1 "/" p2 "/match-stats?ajax=true")]
     (merge params
@@ -73,3 +85,17 @@
                       parse-string
                       multi-sets-filter)
             :url  url})))
+
+(defn tournament-stats [{:keys [tournament tournament-id year] :as params}]
+  (let [url (create-atp-url :scores tournament "/" tournament-id "/" year "/results")
+        page (fetch-url url)]
+    (merge params
+           {:matches (map #(get-in % [:attrs :href]) (html/select page [:td.day-table-score :a]))
+            :url     url
+            :draw   {:singles (single-text-element page #(html/select % [:span.item-value]) first)
+                      :doubles (single-text-element page #(html/select % [:span.item-value]) second)}
+            :court    (single-text-element page #(html/select % [:span.item-value]) #(nth % 2))
+            :prize   (single-text-element page #(html/select % [:td.prize-money :div.info-area :div.item-details :span.item-value]) first)
+            :dates   (single-text-element page #(html/select % [:span.tourney-dates]) first)})))
+
+(defn player-stats [{:keys [player-url player-id]}])

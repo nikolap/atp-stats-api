@@ -1,6 +1,6 @@
 # atp-stats-api
 
-A Clojure API to retrieve data from the ATP World Tour website. Work in progress, no stable release yet
+A Clojure API to retrieve data from the ATP World Tour website.
 
 ## Usage
 

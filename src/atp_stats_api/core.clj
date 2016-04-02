@@ -45,11 +45,21 @@
 
 (defn single-text-element [page selector nth-fn]
   (-> page
-      selector
+      (html/select selector)
       nth-fn
       :content
       first
       clean-breaks))
+
+(defn to-int [s]
+  (try (Integer/parseInt s)
+       (catch NumberFormatException e nil)))
+
+(defn measurement-conversion [page selector regex]
+  (-> page
+      (single-text-element selector first)
+      (string/replace regex "")
+      to-int))
 
 ;; API
 
@@ -92,10 +102,23 @@
     (merge params
            {:matches (map #(get-in % [:attrs :href]) (html/select page [:td.day-table-score :a]))
             :url     url
-            :draw   {:singles (single-text-element page #(html/select % [:span.item-value]) first)
-                      :doubles (single-text-element page #(html/select % [:span.item-value]) second)}
-            :court    (single-text-element page #(html/select % [:span.item-value]) #(nth % 2))
-            :prize   (single-text-element page #(html/select % [:td.prize-money :div.info-area :div.item-details :span.item-value]) first)
-            :dates   (single-text-element page #(html/select % [:span.tourney-dates]) first)})))
+            :draw    {:singles (single-text-element page [:span.item-value] first)
+                      :doubles (single-text-element page [:span.item-value] second)}
+            :court   (single-text-element page [:span.item-value] #(nth % 2))
+            :prize   (single-text-element page [:td.prize-money :div.info-area :div.item-details :span.item-value] first)
+            :dates   (single-text-element page [:span.tourney-dates] first)})))
 
-(defn player-stats [{:keys [player-url player-id]}])
+(defn player-stats [{:keys [player-url player-id] :as params}]
+  (let [url (create-atp-url :players player-url "/" player-id "/player-activity?year=all&ajax=true")
+        page (fetch-url url)
+        plays (single-text-element page [[:div.table-value (html/pred #(.contains (html/text %) "Handed"))]] first)]
+    (merge params
+           {:url            url
+            :first-name     (single-text-element page [:div.first-name] first)
+            :last-name      (single-text-element page [:div.last-name] first)
+            :birthday       (string/replace (single-text-element page [:span.table-birthday] first) #"\(\)" "")
+            :height         (measurement-conversion page [:span.table-height-cm-wrapper] #"[\(\)cm]")
+            :weight         (measurement-conversion page [:span.table-weight-kg-wrapper] #"[\(\)kg]")
+            :plays          plays
+            :left-handed?   (boolean (re-find #"Left-Handed" plays))
+            :one-handed-bh? (boolean (re-find #"One-Handed" plays))})))
